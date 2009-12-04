@@ -15,6 +15,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -}
+import qualified Data.List as List
+
 data Suit =
     Hearts |
     Diamonds |
@@ -38,12 +40,81 @@ data Face =
     Ace
   deriving (Ord, Eq, Enum, Show)
 
-data Card = Card {
+data Card =
+    Card {
       face :: Face,
       suit :: Suit
-    } deriving (Eq, Show)
+    }
+  deriving (Eq, Show)
 
 instance Ord Card
   where
     compare a b = compare (face a) (face b)
 
+--groupAs [same 2 face, same 2 face, any 1] -> Just (a:_:c:_e)
+--groupAs [same 3 face, same 2 face] -> Just (a, _, _, _, _)
+--groupAs [same 5 suit] -> Just (a, b, c, d, e)
+
+--groupAs [a, b, c, d, e] if face a == face b && face c == face d -> Just (a:_:c:_e)
+
+pc :: Card -> Bool
+pc Card {face = Seven} = True
+pc _ = False
+
+
+data Criteria =
+    Joint {
+      count :: Int,
+      dualPredicate :: Card -> Card -> Bool
+    } |
+    Disjoint {
+      count :: Int,
+      singlePredicate :: Card -> Bool
+    }
+
+
+--straight :: Int -> Criteria
+--straight c = Joint c (\c1 c2 -> valueOf face c1 == 1 + (valueOf face c2))
+
+same :: (Eq a) => Int -> (Card -> a) -> Criteria
+same c s = Joint c (\c1 c2 -> s c1 == s c2)
+
+wild :: Int -> Criteria
+wild c = Disjoint c (\_ -> True)
+
+--checkSomeHand :: [Card] -> Int
+--checkSomeHand (orderBy (Criteria 3 (\_ _ -> True)) -> 6) = 8
+--checkSomeHand (orderBy (same 4 face) -> 6) = 8
+
+
+--orderBy :: [Criteria] -> [Card] -> Maybe [Card]
+--orderBy cs = find (predicateTest c) $ permutations
+--  where
+--    predicateTest cs
+
+
+--unfoldr :: (b -> Maybe (a, b)) -> b -> [a]
+splitAtMany :: [Int] -> [a] -> [[a]]
+splitAtMany counts elems = List.unfoldr splitNext (counts, elems)
+  where
+    splitNext ([], _) = Nothing
+    splitNext (c:cs, []) = Just ([], (cs, []))
+    splitNext (c:cs, xs) = Just (fst split', (cs, snd split'))
+      where
+        split' = List.splitAt c xs
+
+
+checkStraight :: [Card] -> Maybe Card
+checkStraight cards =
+  case (List.sort cards) of
+    [Card Two _, Card Three _, Card Four _, highest@(Card Five _), Card Ace _] -> Just highest
+    [Card Two _, Card Three _, Card Four _, Card Five _, highest@(Card Six _)] -> Just highest
+    [Card Three _, Card Four _, Card Five _, Card Six _, highest@(Card Seven _)] -> Just highest
+    [Card Four _, Card Five _, Card Six _, Card Seven _, highest@(Card Eight _)] -> Just highest
+    [Card Five _, Card Six _, Card Seven _, Card Eight _, highest@(Card Nine _)] -> Just highest
+    [Card Six _, Card Seven _, Card Eight _, Card Nine _, highest@(Card Ten _)] -> Just highest
+    [Card Seven _, Card Eight _, Card Nine _, Card Ten _, highest@(Card Jack _)] -> Just highest
+    [Card Eight _, Card Nine _, Card Ten _, Card Jack _, highest@(Card Queen _)] -> Just highest
+    [Card Nine _, Card Ten _, Card Jack _, Card Queen _, highest@(Card King _)] -> Just highest
+    [Card Ten _, Card Jack _, Card Queen _, Card King _, highest@(Card Ace _)] -> Just highest
+    otherwise -> Nothing

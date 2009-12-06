@@ -51,7 +51,9 @@ instance Ord Card
   where
     compare a b = compare (face a) (face b)
 
---groupAs [same 2 face, same 2 face, any 1] -> Just (a:_:c:_e)
+rank :: [Card] -> [Face]
+rank ((orderBy [same 2 face, same 2 face]) -> Just [p1, _, p2, _, s]) = [face $ max p1 p2, face $ min p1 p2, face s]
+
 --groupAs [same 3 face, same 2 face] -> Just (a, _, _, _, _)
 --groupAs [same 5 suit] -> Just (a, b, c, d, e)
 
@@ -87,13 +89,18 @@ wild c = Disjoint c (\_ -> True)
 --checkSomeHand (orderBy (same 4 face) -> 6) = 8
 
 
---orderBy :: [Criteria] -> [Card] -> Maybe [Card]
---orderBy cs = find (predicateTest c) $ permutations
---  where
---    predicateTest cs
+orderBy :: [Criteria] -> [Card] -> Maybe [Card]
+orderBy criterium cs = List.find (predicateTest) $ permutations cs
+  where
+    predicateTest cards = List.and $ List.zipWith (applyCriteria) criterium splits
+      where
+        splits = splitAtMany (counts) cards
+        counts = List.map (count) criterium
 
+applyCriteria :: Criteria -> [Card] -> Bool
+applyCriteria (Joint _ p) cards = List.and $ List.zipWith (p) cards $ tail cards
+applyCriteria (Disjoint _ p) cards = List.and $ List.map (p) cards
 
---unfoldr :: (b -> Maybe (a, b)) -> b -> [a]
 splitAtMany :: [Int] -> [a] -> [[a]]
 splitAtMany counts elems = List.unfoldr splitNext (counts, elems)
   where
@@ -102,6 +109,17 @@ splitAtMany counts elems = List.unfoldr splitNext (counts, elems)
     splitNext (c:cs, xs) = Just (fst split', (cs, snd split'))
       where
         split' = List.splitAt c xs
+
+
+permutations            :: [a] -> [[a]]
+permutations xs0        =  xs0 : perms xs0 []
+  where
+    perms []     _  = []
+    perms (t:ts) is = foldr interleave (perms ts (t:is)) (permutations is)
+      where interleave    xs     r = let (_,zs) = interleave' id xs r in zs
+            interleave' _ []     r = (ts, r)
+            interleave' f (y:ys) r = let (us,zs) = interleave' (f . (y:)) ys r
+                                     in  (y:us, f (t:y:us) : zs)
 
 
 checkStraight :: [Card] -> Maybe Card

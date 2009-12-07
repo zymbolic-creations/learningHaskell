@@ -38,7 +38,7 @@ data Face =
     Queen |
     King |
     Ace
-  deriving (Ord, Eq, Enum, Show)
+  deriving (Ord, Eq, Enum, Show, Bounded)
 
 data Card =
     Card {
@@ -51,20 +51,54 @@ instance Ord Card
   where
     compare a b = compare (face a) (face b)
 
+
 rank :: [Card] -> [Face]
-rank ((orderBy [same 2 face, same 2 face]) -> Just [p1, _, p2, _, s]) = [face $ max p1 p2, face $ min p1 p2, face s]
 
---groupAs [same 3 face, same 2 face] -> Just (a, _, _, _, _)
---groupAs [same 5 suit] -> Just (a, b, c, d, e)
+-- StraightFlush
 
---groupAs [a, b, c, d, e] if face a == face b && face c == face d -> Just (a:_:c:_e)
+-- FourOfAKind
+rank (match [same 4 face, wild 1]
+    -> Just [f, _, _, _, _]) = [face f]
 
-pc :: Card -> Bool
-pc Card {face = Seven} = True
-pc _ = False
+-- FullHouse
+rank (match [same 3 face, same 2 face]
+    -> Just [t, _, _, _, _]) = [face t]
+
+-- Flush
+rank (match [same 5 suit]
+    -> Just cards) = decreasingFaces cards
+
+-- Straight
+rank (match [is (\c -> face c == Ace), run 4]
+    -> Just [_, _, _, _, h]) = [face h]
+rank (match [run 5]
+    -> Just [_, _, _, _, h]) = [face h]
+
+-- ThreeOfAKind
+rank (match [same 3 face, wild 2]
+    -> Just [t, _, _, _, _]) = [face t]
+
+-- TwoPairs
+rank (match [same 2 face, same 2 face, wild 1]
+    -> Just [p1, _, p2, _, s]) = [face $ max p1 p2, face $ min p1 p2, face s]
+
+-- Pair
+rank (match [same 2 face, wild 3]
+    -> Just (p:_:others)) = (face p):(decreasingFaces others)
+
+-- HighCard
+rank (match [wild 5]
+    -> Just cards) = decreasingFaces cards
 
 
-data Criteria =
+decreasingFaces :: [Card] -> [Face]
+decreasingFaces cards = List.reverse $ List.sort $ faces cards
+
+faces :: [Card] -> [Face]
+faces cards = List.map (face) cards
+
+
+data Criterion =
     Joint {
       count :: Int,
       dualPredicate :: Card -> Card -> Bool
@@ -74,32 +108,31 @@ data Criteria =
       singlePredicate :: Card -> Bool
     }
 
-
---straight :: Int -> Criteria
---straight c = Joint c (\c1 c2 -> valueOf face c1 == 1 + (valueOf face c2))
-
-same :: (Eq a) => Int -> (Card -> a) -> Criteria
+same :: (Eq a) => Int -> (Card -> a) -> Criterion
 same c s = Joint c (\c1 c2 -> s c1 == s c2)
 
-wild :: Int -> Criteria
+run :: Int -> Criterion
+run c = Joint c (\c1 c2 -> (face c1 /= (maxBound::Face)) && (succ $ face c1 == face c2))
+
+is :: (Card -> Bool) -> Criterion
+is p = Disjoint 1 p
+
+wild :: Int -> Criterion
 wild c = Disjoint c (\_ -> True)
 
---checkSomeHand :: [Card] -> Int
---checkSomeHand (orderBy (Criteria 3 (\_ _ -> True)) -> 6) = 8
---checkSomeHand (orderBy (same 4 face) -> 6) = 8
 
-
-orderBy :: [Criteria] -> [Card] -> Maybe [Card]
-orderBy criterium cs = List.find (predicateTest) $ permutations cs
+match :: [Criterion] -> [Card] -> Maybe [Card]
+match criteria cs = List.find (predicateTest) $ permutations cs
   where
-    predicateTest cards = List.and $ List.zipWith (applyCriteria) criterium splits
+    predicateTest cards = List.and $ List.zipWith (checkCriterion) criteria splits
       where
         splits = splitAtMany (counts) cards
-        counts = List.map (count) criterium
+        counts = List.map (count) criteria
 
-applyCriteria :: Criteria -> [Card] -> Bool
-applyCriteria (Joint _ p) cards = List.and $ List.zipWith (p) cards $ tail cards
-applyCriteria (Disjoint _ p) cards = List.and $ List.map (p) cards
+checkCriterion :: Criterion -> [Card] -> Bool
+checkCriterion (Joint _ p) cards = List.and $ List.zipWith (p) cards $ tail cards
+checkCriterion (Disjoint _ p) cards = List.and $ List.map (p) cards
+
 
 splitAtMany :: [Int] -> [a] -> [[a]]
 splitAtMany counts elems = List.unfoldr splitNext (counts, elems)
@@ -121,18 +154,3 @@ permutations xs0        =  xs0 : perms xs0 []
             interleave' f (y:ys) r = let (us,zs) = interleave' (f . (y:)) ys r
                                      in  (y:us, f (t:y:us) : zs)
 
-
-checkStraight :: [Card] -> Maybe Card
-checkStraight cards =
-  case (List.sort cards) of
-    [Card Two _, Card Three _, Card Four _, highest@(Card Five _), Card Ace _] -> Just highest
-    [Card Two _, Card Three _, Card Four _, Card Five _, highest@(Card Six _)] -> Just highest
-    [Card Three _, Card Four _, Card Five _, Card Six _, highest@(Card Seven _)] -> Just highest
-    [Card Four _, Card Five _, Card Six _, Card Seven _, highest@(Card Eight _)] -> Just highest
-    [Card Five _, Card Six _, Card Seven _, Card Eight _, highest@(Card Nine _)] -> Just highest
-    [Card Six _, Card Seven _, Card Eight _, Card Nine _, highest@(Card Ten _)] -> Just highest
-    [Card Seven _, Card Eight _, Card Nine _, Card Ten _, highest@(Card Jack _)] -> Just highest
-    [Card Eight _, Card Nine _, Card Ten _, Card Jack _, highest@(Card Queen _)] -> Just highest
-    [Card Nine _, Card Ten _, Card Jack _, Card Queen _, highest@(Card King _)] -> Just highest
-    [Card Ten _, Card Jack _, Card Queen _, Card King _, highest@(Card Ace _)] -> Just highest
-    otherwise -> Nothing
